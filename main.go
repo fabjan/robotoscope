@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/fabjan/robotoscope/html"
 	"github.com/fabjan/robotoscope/router"
 )
 
@@ -71,6 +72,43 @@ func showCheaters(w http.ResponseWriter, r *http.Request) {
 	list(w, &cheaters)
 }
 
+func showIndex(w http.ResponseWriter, r *http.Request) {
+	data := html.Page{
+		Title:    "Robotoscope",
+		Robots:   []html.RobotInfo{},
+		Cheaters: []html.RobotInfo{},
+	}
+
+	robots.lock.RLock()
+	defer robots.lock.RUnlock()
+	for robot, count := range robots.data {
+		info := html.RobotInfo{
+			Seen:      count,
+			UserAgent: robot,
+		}
+		data.Robots = append(data.Robots, info)
+	}
+
+	cheaters.lock.RLock()
+	defer cheaters.lock.RUnlock()
+	for robot, count := range cheaters.data {
+		info := html.RobotInfo{
+			Seen:      count,
+			UserAgent: robot,
+		}
+		data.Cheaters = append(data.Cheaters, info)
+	}
+
+	var b strings.Builder
+	err := html.Render(&b, data)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintln(w, "cannot render page")
+	} else {
+		w.Write([]byte(b.String()))
+	}
+}
+
 func main() {
 	addr := ":5000"
 	if os.Getenv("PORT") != "" {
@@ -83,6 +121,7 @@ func main() {
 	r.HandleFunc(regexp.MustCompile("/secret/*"), reportCheater)
 	r.HandleFunc(regexp.MustCompile("/list.txt"), showRobots)
 	r.HandleFunc(regexp.MustCompile("/cheaters.txt"), showCheaters)
+	r.HandleFunc(regexp.MustCompile("/"), showIndex)
 	http.Handle("/", &r)
 
 	log.Fatal(http.ListenAndServe(addr, nil))
