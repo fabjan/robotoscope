@@ -6,21 +6,17 @@ import (
 	"html/template"
 	"io"
 	"log"
+
+	"github.com/fabjan/robotoscope/core"
 )
 
 var pageTpl *template.Template
 
-// RobotInfo shows how many times a user agent has been seen.
-type RobotInfo struct {
-	Seen      int
-	UserAgent string
-}
-
 // Page shows how many times robots have been seen and how many tried to look at our secrets!
 type Page struct {
 	Title    string
-	Robots   []RobotInfo
-	Cheaters []RobotInfo
+	Robots   []core.RobotInfo
+	Cheaters []core.RobotInfo
 }
 
 //go:embed index.html.tpl
