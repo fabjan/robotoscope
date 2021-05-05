@@ -2,6 +2,7 @@
 package html
 
 import (
+	_ "embed" // for index.html.tpl
 	"html/template"
 	"io"
 	"log"
@@ -22,53 +23,10 @@ type Page struct {
 	Cheaters []RobotInfo
 }
 
+//go:embed index.html.tpl
+var tpl string
+
 func init() {
-	tpl := `
-<!DOCTYPE html>
-<html>
-<head>
-	<meta charset="UTF-8">
-	<title>{{.Title}}</title>
-	<link rel="stylesheet" href="https://gist.githubusercontent.com/fabjan/322b61203b3e0fa36c862d331f360793/raw/c3853ef186ac0ef48070a686a0cad7007ad11341/better.css">
-</head>
-<body>
-
-<h2>Robots</h2>
-{{if not .Robots}}<p><em>(no data)</em></p>
-{{else}}
-<table>
-    <tr>
-        <th>Seen</th>
-        <th>User-Agent</th>
-    </tr>
-    {{ range .Robots}}
-        <tr>
-            <td>{{ .Seen }}</td>
-            <td>{{ .UserAgent }}</td>
-        </tr>
-	{{ end}}
-</table>
-{{end}}
-
-<h2>Cheaters</h2>
-{{if not .Cheaters}}<p><em>(no data)</em></p>
-{{else}}
-<table>
-    <tr>
-        <th>Seen</th>
-        <th>User-Agent</th>
-    </tr>
-    {{ range .Cheaters}}
-        <tr>
-            <td>{{ .Seen }}</td>
-            <td>{{ .UserAgent }}</td>
-        </tr>
-	{{ end}}
-</table>
-{{end}}
-
-</html>
-`
 	var err error
 	pageTpl, err = template.New("page").Parse(tpl)
 	if err != nil {
