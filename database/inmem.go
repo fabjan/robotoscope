@@ -6,18 +6,21 @@ import (
 	"github.com/fabjan/robotoscope/core"
 )
 
-type robotMap struct {
+// RobotMap is an in-memory RobotStore.
+type RobotMap struct {
 	lock sync.RWMutex
 	data map[string]int
 }
 
-func NewRobotMap() robotMap {
-	return robotMap{
+// NewRobotMap creates an fresh RobotMap.
+func NewRobotMap() RobotMap {
+	return RobotMap{
 		data: make(map[string]int),
 	}
 }
 
-func (m *robotMap) Count(name string) error {
+// Count increases the seen count for the given bot.
+func (m *RobotMap) Count(name string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	count := m.data[name]
@@ -25,7 +28,8 @@ func (m *robotMap) Count(name string) error {
 	return nil
 }
 
-func (m *robotMap) List() ([]core.RobotInfo, error) {
+// List returns a list showing how many times each robot has been seen.
+func (m *RobotMap) List() ([]core.RobotInfo, error) {
 	info := []core.RobotInfo{}
 
 	m.lock.RLock()
