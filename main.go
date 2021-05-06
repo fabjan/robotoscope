@@ -110,14 +110,25 @@ func main() {
 			cheaters: &cheaters,
 		}
 	} else {
-		db, err := database.GetPostgresStores(os.Getenv("DATABASE_URL"))
+		db, err := database.OpenPg(os.Getenv("DATABASE_URL"))
 		if err != nil {
 			log.Fatalf("cannot get database connection: %v\n", err)
 		}
 		defer db.Close()
+
+		robots, err := database.GetPgStore(db, "robots")
+		if err != nil {
+			log.Fatalf("cannot initialize robots store: %v\n", err)
+		}
+
+		cheaters, err := database.GetPgStore(db, "cheaters")
+		if err != nil {
+			log.Fatalf("cannot initialize robots store: %v\n", err)
+		}
+
 		s = server{
-			robots:   db.Robots,
-			cheaters: db.Cheaters,
+			robots:   robots,
+			cheaters: cheaters,
 		}
 	}
 

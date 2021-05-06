@@ -11,32 +11,28 @@ import (
 	"github.com/fabjan/robotoscope/core"
 )
 
-type tableStore struct {
+// PgStore tracks robots in Postgres
+type PgStore struct {
 	db        *sql.DB
 	tableName string
 }
 
-var createRobotsSQL string = `
-CREATE TABLE IF NOT EXISTS robots (
+func (ts *PgStore) createTableSQL() string {
+	sql := `
+CREATE TABLE IF NOT EXISTS %s (
 	user_agent text not null,
 	seen numeric,
-    unique(user_agent)
+	unique(user_agent)
 );
 `
+	return fmt.Sprintf(sql, ts.tableName)
+}
 
-var createCheatersSQL string = `
-CREATE TABLE IF NOT EXISTS cheaters (
-	user_agent text not null,
-	seen numeric,
-    unique(user_agent)
-);
-`
-
-func (ts *tableStore) selectSQL(limit int) string {
+func (ts *PgStore) selectSQL(limit int) string {
 	return fmt.Sprintf("SELECT user_agent, seen from %s limit %d", ts.tableName, limit)
 }
 
-func (ts *tableStore) insertSQL() string {
+func (ts *PgStore) insertSQL() string {
 	sql := `
 INSERT INTO %s (user_agent, seen) VALUES ($1, 1)
 ON CONFLICT (user_agent) DO UPDATE SET seen = %s.seen + 1
@@ -44,7 +40,8 @@ ON CONFLICT (user_agent) DO UPDATE SET seen = %s.seen + 1
 	return fmt.Sprintf(sql, ts.tableName, ts.tableName)
 }
 
-func (ts *tableStore) List() ([]core.RobotInfo, error) {
+// List returns a list showing how many times each robot has been seen.
+func (ts *PgStore) List() ([]core.RobotInfo, error) {
 	rows, err := ts.db.Query(ts.selectSQL(640)) // 640 rows ought to be enough for anyone
 	if err != nil {
 		return nil, err
@@ -68,7 +65,8 @@ func (ts *tableStore) List() ([]core.RobotInfo, error) {
 	return info, nil
 }
 
-func (ts *tableStore) Count(name string) error {
+// Count increases the seen count for the given bot.
+func (ts *PgStore) Count(name string) error {
 	res, err := ts.db.Exec(ts.insertSQL(), name)
 	if err != nil {
 		return err
@@ -83,47 +81,23 @@ func (ts *tableStore) Count(name string) error {
 	return nil
 }
 
-// PgStores maintains robot stores robots and cheaters.
-type PgStores struct {
-	Robots   *tableStore
-	Cheaters *tableStore
-	db       *sql.DB
+// OpenPg opens a connection to the Postgres database with the given URL.
+func OpenPg(rawURL string) (*sql.DB, error) {
+	return sql.Open("pgx", rawURL)
 }
 
-// GetPostgresStores connects to the given database, initializes the tables, and
+// GetPgStore connects to the given database, initializes the tables, and
 // returns the connection.
-func GetPostgresStores(dbURL string) (*PgStores, error) {
-	db, err := sql.Open("pgx", dbURL)
+func GetPgStore(db *sql.DB, name string) (*PgStore, error) {
+	s := PgStore{
+		tableName: name,
+		db:        db,
+	}
+
+	_, err := db.Exec(s.createTableSQL())
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(createRobotsSQL)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = db.Exec(createCheatersSQL)
-	if err != nil {
-		return nil, err
-	}
-
-	stores := &PgStores{
-		db: db,
-		Robots: &tableStore{
-			tableName: "robots",
-			db:        db,
-		},
-		Cheaters: &tableStore{
-			tableName: "cheaters",
-			db:        db,
-		},
-	}
-
-	return stores, nil
-}
-
-// Close closes the database connection.
-func (s *PgStores) Close() {
-	s.db.Close()
+	return &s, nil
 }
