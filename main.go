@@ -2,17 +2,20 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
+
+	"go.uber.org/zap"
 
 	"github.com/fabjan/robotoscope/core"
 	"github.com/fabjan/robotoscope/database"
 	"github.com/fabjan/robotoscope/html"
 	"github.com/fabjan/robotoscope/router"
 )
+
+var logger *zap.SugaredLogger
 
 // RobotStore can track and list robots
 type RobotStore interface {
@@ -35,7 +38,7 @@ func count(r *http.Request, s RobotStore) {
 	if ua != "" {
 		err := s.Count(ua)
 		if err != nil {
-			log.Printf("ERROR: store error when counting (%v)", err)
+			logger.With("error", err).Error("store error when counting")
 		}
 	}
 }
@@ -51,11 +54,11 @@ func (s server) reportCheater(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusPaymentRequired)
 }
 
-func list(w http.ResponseWriter, m RobotStore) {
+func list(w http.ResponseWriter, rs RobotStore) {
 	var b strings.Builder
-	infos, err := m.List()
+	infos, err := rs.List()
 	if err != nil {
-		log.Printf("ERROR: store error when listing (%v)", err)
+		logger.With("error", err, "source", "store").Error("listing robots failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -76,13 +79,13 @@ func (s server) showCheaters(w http.ResponseWriter, r *http.Request) {
 func (s server) showIndex(w http.ResponseWriter, r *http.Request) {
 	rInfos, err := s.robots.List()
 	if err != nil {
-		log.Printf("ERROR: store error when listing robots (%v)", err)
+		logger.With("error", err, "source", "store").Error("listing robots failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	cInfos, err := s.cheaters.List()
 	if err != nil {
-		log.Printf("ERROR: store error when listing cheaters (%v)", err)
+		logger.With("error", err, "source", "store").Error("listing cheaters failed")
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -96,7 +99,7 @@ func (s server) showIndex(w http.ResponseWriter, r *http.Request) {
 	var b strings.Builder
 	err = html.Render(&b, data)
 	if err != nil {
-		log.Printf("ERROR: render error when listing (%v)", err)
+		logger.With("error", err, "source", "render-html").Error("listing failed")
 		w.WriteHeader(http.StatusInternalServerError)
 	} else {
 		w.Write([]byte(b.String()))
@@ -106,19 +109,19 @@ func (s server) showIndex(w http.ResponseWriter, r *http.Request) {
 func (s *server) connectPostgres(rawURL string) {
 	db, err := database.OpenPg(rawURL)
 	if err != nil {
-		log.Fatalf("cannot open database connection: %v\n", err)
+		logger.With("error", err).Fatal("cannot open database connection")
 	}
 
 	s.closer = db
 
 	robots, err := database.NewPgStore(db, "robots")
 	if err != nil {
-		log.Fatalf("cannot initialize robots store: %v\n", err)
+		logger.With("error", err).Fatal("cannot initialize robot store")
 	}
 
 	cheaters, err := database.NewPgStore(db, "cheaters")
 	if err != nil {
-		log.Fatalf("cannot initialize robots store: %v\n", err)
+		logger.With("error", err).Fatal("cannot initialize cheaters store")
 	}
 
 	s.robots = robots
@@ -141,19 +144,23 @@ func (s *server) useInMemoryStores() {
 
 func main() {
 
+	l, _ := zap.NewProduction()
+	logger = l.Sugar()
+	defer l.Sync()
+
 	s := server{}
 
 	redisURL := os.Getenv("REDIS_URL")
 	dbURL := os.Getenv("DATABASE_URL")
 
 	if redisURL != "" {
-		log.Println("INFO: REDIS_URL is set, connecting to Redis")
+		logger.Info("REDIS_URL is set, connecting to Redis")
 		s.connectRedis(redisURL)
 	} else if dbURL != "" {
-		log.Println("INFO: DATABASE_URL is set, connecting to Postgres")
+		logger.Info("DATABASE_URL is set, connecting to Postgres")
 		s.connectPostgres(dbURL)
 	} else {
-		log.Println("WARN: using in-memory store, set REDIS_URL or DATABASE_URL in the environment for persistence")
+		logger.Info("using in-memory store, set REDIS_URL or DATABASE_URL in the environment for persistence")
 		s.useInMemoryStores()
 	}
 
@@ -177,6 +184,6 @@ func main() {
 	r.HandleFunc(regexp.MustCompile("/"), s.showIndex)
 	http.Handle("/", &r)
 
-	log.Printf("INFO: ready, serving at %s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	logger.Infof("ready, serving at %s", addr)
+	logger.Fatal(http.ListenAndServe(addr, nil))
 }
