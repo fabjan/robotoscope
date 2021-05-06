@@ -12,7 +12,7 @@ type RobotMap struct {
 	data map[string]int
 }
 
-// NewRobotMap creates an fresh RobotMap.
+// NewRobotMap creates a fresh RobotMap.
 func NewRobotMap() RobotMap {
 	return RobotMap{
 		data: make(map[string]int),

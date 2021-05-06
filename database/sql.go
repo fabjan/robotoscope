@@ -40,6 +40,22 @@ ON CONFLICT (user_agent) DO UPDATE SET seen = %s.seen + 1
 	return fmt.Sprintf(sql, ts.tableName, ts.tableName)
 }
 
+// Count increases the seen count for the given bot.
+func (ts *PgStore) Count(name string) error {
+	res, err := ts.db.Exec(ts.insertSQL(), name)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return errors.New("no rows updated")
+	}
+	return nil
+}
+
 // List returns a list showing how many times each robot has been seen.
 func (ts *PgStore) List() ([]core.RobotInfo, error) {
 	rows, err := ts.db.Query(ts.selectSQL(640)) // 640 rows ought to be enough for anyone
@@ -65,29 +81,13 @@ func (ts *PgStore) List() ([]core.RobotInfo, error) {
 	return info, nil
 }
 
-// Count increases the seen count for the given bot.
-func (ts *PgStore) Count(name string) error {
-	res, err := ts.db.Exec(ts.insertSQL(), name)
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows != 1 {
-		return errors.New("no rows updated")
-	}
-	return nil
-}
-
 // OpenPg opens a connection to the Postgres database with the given URL.
 func OpenPg(rawURL string) (*sql.DB, error) {
 	return sql.Open("pgx", rawURL)
 }
 
-// GetPgStore connects to the given database, initializes the tables, and
-// returns the connection.
+// GetPgStore creates a PgStore backed by the given table and DB.
+// The table is created if it does not exist.
 func GetPgStore(db *sql.DB, name string) (*PgStore, error) {
 	s := PgStore{
 		tableName: name,
