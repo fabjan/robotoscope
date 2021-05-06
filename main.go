@@ -20,9 +20,14 @@ type RobotStore interface {
 	List() ([]core.RobotInfo, error)
 }
 
+type closable interface {
+	Close() error
+}
+
 type server struct {
 	robots   RobotStore
 	cheaters RobotStore
+	closer   closable
 }
 
 func count(r *http.Request, s RobotStore) {
@@ -98,39 +103,65 @@ func (s server) showIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *server) connectPostgres(rawURL string) {
+	db, err := database.OpenPg(rawURL)
+	if err != nil {
+		log.Fatalf("cannot open database connection: %v\n", err)
+	}
+
+	s.closer = db
+
+	robots, err := database.NewPgStore(db, "robots")
+	if err != nil {
+		log.Fatalf("cannot initialize robots store: %v\n", err)
+	}
+
+	cheaters, err := database.NewPgStore(db, "cheaters")
+	if err != nil {
+		log.Fatalf("cannot initialize robots store: %v\n", err)
+	}
+
+	s.robots = robots
+	s.cheaters = cheaters
+}
+
+func (s *server) connectRedis(rawURL string) {
+	c := database.OpenRedis(rawURL)
+	s.closer = c
+	s.robots = database.NewRedisStore(c, "robots")
+	s.cheaters = database.NewRedisStore(c, "cheaters")
+}
+
+func (s *server) useInMemoryStores() {
+	r := database.NewRobotMap()
+	c := database.NewRobotMap()
+	s.robots = &r
+	s.cheaters = &c
+}
+
 func main() {
 
-	var s server
+	s := server{}
 
-	if os.Getenv("DATABASE_URL") == "" {
-		robots := database.NewRobotMap()
-		cheaters := database.NewRobotMap()
-		s = server{
-			robots:   &robots,
-			cheaters: &cheaters,
-		}
+	redisURL := os.Getenv("REDIS_URL")
+	dbURL := os.Getenv("DATABASE_URL")
+
+	if redisURL != "" {
+		log.Println("INFO: REDIS_URL is set, connecting to Redis")
+		s.connectRedis(redisURL)
+	} else if dbURL != "" {
+		log.Println("INFO: DATABASE_URL is set, connecting to Postgres")
+		s.connectPostgres(dbURL)
 	} else {
-		db, err := database.OpenPg(os.Getenv("DATABASE_URL"))
-		if err != nil {
-			log.Fatalf("cannot get database connection: %v\n", err)
-		}
-		defer db.Close()
-
-		robots, err := database.GetPgStore(db, "robots")
-		if err != nil {
-			log.Fatalf("cannot initialize robots store: %v\n", err)
-		}
-
-		cheaters, err := database.GetPgStore(db, "cheaters")
-		if err != nil {
-			log.Fatalf("cannot initialize robots store: %v\n", err)
-		}
-
-		s = server{
-			robots:   robots,
-			cheaters: cheaters,
-		}
+		log.Println("WARN: using in-memory store, set REDIS_URL or DATABASE_URL in the environment for persistence")
+		s.useInMemoryStores()
 	}
+
+	defer func() {
+		if s.closer != nil {
+			s.closer.Close()
+		}
+	}()
 
 	addr := ":5000"
 	if os.Getenv("PORT") != "" {
@@ -146,5 +177,6 @@ func main() {
 	r.HandleFunc(regexp.MustCompile("/"), s.showIndex)
 	http.Handle("/", &r)
 
+	log.Printf("INFO: ready, serving at %s", addr)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }

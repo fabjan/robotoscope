@@ -86,9 +86,9 @@ func OpenPg(rawURL string) (*sql.DB, error) {
 	return sql.Open("pgx", rawURL)
 }
 
-// GetPgStore creates a PgStore backed by the given table and DB.
+// NewPgStore creates a PgStore backed by the given table and DB.
 // The table is created if it does not exist.
-func GetPgStore(db *sql.DB, name string) (*PgStore, error) {
+func NewPgStore(db *sql.DB, name string) (*PgStore, error) {
 	s := PgStore{
 		tableName: name,
 		db:        db,
